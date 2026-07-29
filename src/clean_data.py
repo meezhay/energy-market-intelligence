@@ -14,3 +14,15 @@ def filter_ssa(df):
 
 def select_years(start=2014, end=2023):
     return [str(year) for year in range(start, end + 1)]
+
+
+def merge_indicator(df, indicator_df):
+    """
+    Merge an indicator dataset into the main dataframe
+    using Country Code.
+    """
+    return df.merge(
+        indicator_df,
+        on="Country Code",
+        how="left"
+    )
