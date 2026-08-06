@@ -1,7 +1,10 @@
 # Everything involving calculations will be in this file. For example, calculating the priority score based on access, improvement, and population weights.
 
 
-from src.utils import min_max_scale
+from src.utils import (
+    min_max_scale,
+    log_transform,
+)
 
 def calculate_access_score(df):
     """
@@ -136,6 +139,65 @@ def calculate_people_without_electricity(df):
     df["People_Without_Electricity"] = (
         df["Population_2023"]
         * (1 - df["2023"] / 100)
+    )
+
+    return df
+
+
+
+def calculate_gdp_score(df):
+    """
+    Calculate a normalized GDP score using
+    log-transformed GDP per capita.
+    """
+
+    df = df.copy()
+
+    df["GDP_Log"] = log_transform(
+        df["GDP_Per_Capita_2023"]
+    )
+
+    df["GDP_Score"] = min_max_scale(
+        df["GDP_Log"]
+    )
+
+    return df
+
+
+
+
+
+def calculate_investment_opportunity_score(
+    df,
+    access_weight,
+    improvement_weight,
+    population_weight,
+    gdp_weight,
+    output_column="Investment_Opportunity_Score",
+):
+    """
+    Calculate a weighted investment opportunity score using
+    electricity access, improvement, population, and GDP scores.
+
+    The weights must sum to 1.
+    """
+
+    if not abs(
+        access_weight
+        + improvement_weight
+        + population_weight
+        + gdp_weight
+        - 1
+    ) < 1e-9:
+        raise ValueError("Weights must sum to 1.")
+
+    df = df.copy()
+
+    df[output_column] = (
+        access_weight * df["Access_Score"]
+        + improvement_weight * df["Improvement_Score"]
+        + population_weight * df["Population_Score"]
+        + gdp_weight * df["GDP_Score"]
     )
 
     return df

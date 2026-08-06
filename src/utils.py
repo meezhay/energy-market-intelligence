@@ -1,5 +1,5 @@
 # Small helper functions that don't naturally belong elsewhere will be in this file. For example, a function to normalize a column in a dataframe.
-
+import numpy as np
 def min_max_scale(series, reverse=False):
     """
     Min-max normalize a pandas Series.
@@ -20,3 +20,18 @@ def min_max_scale(series, reverse=False):
         scaled = 1 - scaled
 
     return scaled
+
+
+def log_transform(series):
+    """
+    Apply the natural logarithm to a pandas Series.
+
+    Parameters
+    ----------
+    series : pandas.Series
+
+    Returns
+    -------
+    pandas.Series
+    """
+    return np.log(series)
