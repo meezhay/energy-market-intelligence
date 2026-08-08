@@ -42,15 +42,19 @@ Each component is normalized to a score between 0 and 1:
 * **Population Score:** More people without electricity receives a higher score
 * **GDP Score:** Higher log-transformed GDP per capita receives a higher score
 
+
+
 The final model uses equal weights:
 
-[
-\text{Investment Opportunity Score} =
-0.25(\text{Access Score}) +
-0.25(\text{Improvement Score}) +
-0.25(\text{Population Score}) +
-0.25(\text{GDP Score})
-]
+$$
+\begin{aligned}
+\text{Investment Opportunity Score} ={}&
+0.25(\text{Access Score}) \\
+&+ 0.25(\text{Improvement Score}) \\
+&+ 0.25(\text{Population Score}) \\
+&+ 0.25(\text{GDP Score})
+\end{aligned}
+$$
 
 Equal weighting is a modelling assumption. It does not represent empirically estimated investment returns.
 
@@ -117,12 +121,19 @@ Data were obtained from the World Bank’s World Development Indicators:
 
 The model uses 2023 data for electricity access, population, and GDP per capita. Access improvement is measured as the percentage-point change between 2014 and 2023.
 
+
+
 People without electricity is estimated as:
 
-[
-\text{Population} \times
-\left(1-\frac{\text{Electricity Access Rate}}{100}\right)
-]
+$$
+\text{People Without Electricity}
+=
+\text{Population}
+\times
+\left(
+1-\frac{\text{Electricity Access Rate}}{100}
+\right)
+$$
 
 ---
 
