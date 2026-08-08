@@ -125,14 +125,16 @@ The model uses 2023 data for electricity access, population, and GDP per capita.
 
 People without electricity is estimated as:
 
+People without electricity is estimated as:
+
 $$
+\begin{aligned}
 \text{People Without Electricity}
-=
-\text{Population}
-\times
+&= \text{Population} \times
 \left(
-1-\frac{\text{Electricity Access Rate}}{100}
+1 - \frac{\text{Electricity Access Rate}}{100}
 \right)
+\end{aligned}
 $$
 
 ---
