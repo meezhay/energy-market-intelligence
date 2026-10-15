@@ -15,3 +15,9 @@ def load_metadata(filepath):
     Load World Bank metadata.
     """
     return pd.read_csv(filepath)
+
+def load_rise_data(filepath):
+    """
+    Load a RISE score export (an HTML table saved as .xls).
+    """
+    return pd.read_html(filepath)[0]
