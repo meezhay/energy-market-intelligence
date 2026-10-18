@@ -13,12 +13,14 @@ from src.clean_data import (
 
 from src.scoring import (
     calculate_access_improvement,
+    calculate_gdp_score,
     calculate_relative_improvement,
     calculate_people_without_electricity,
     calculate_access_score,
     calculate_improvement_score,
     calculate_population_score,
     calculate_priority_score_with_population,
+    calculate_gdp_score
 )
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
@@ -112,3 +114,39 @@ def prepare_ssa_dataset():
 
     return ssa_df
 
+def prepare_investment_dataset():
+    """
+    Build the Version 2 dataset: the Version 1 dataset plus
+    GDP per capita (2023) and the log-scaled GDP score.
+
+    Weighted scores are not calculated here, because the weights
+    are modelling choices made in each notebook.
+    """
+    ssa_df = prepare_ssa_dataset()
+
+    gdp_df = load_worldbank_data(
+        PROJECT_ROOT
+        / "data/raw/GDP/API_NY.GDP.PCAP.CD_DS2_en_csv_v2_33610.csv"
+    )
+
+    gdp_metadata = load_metadata(
+        PROJECT_ROOT
+        / "data/raw/GDP/Metadata_Country_API_NY.GDP.PCAP.CD_DS2_en_csv_v2_33610.csv"
+    )
+
+    gdp_df = merge_metadata(gdp_df, gdp_metadata)
+
+    gdp_df = gdp_df.rename(
+        columns={"2023": "GDP_Per_Capita_2023"}
+    )
+
+    gdp_subset = filter_ssa(gdp_df)[
+        ["Country Code", "GDP_Per_Capita_2023"]
+    ].copy()
+
+    ssa_df = merge_indicator(ssa_df, gdp_subset)
+
+    ssa_df = calculate_gdp_score(ssa_df)
+    
+
+    return ssa_df

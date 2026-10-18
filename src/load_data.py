@@ -16,8 +16,10 @@ def load_metadata(filepath):
     """
     return pd.read_csv(filepath)
 
-def load_rise_data(filepath):
+def load_rise_data(filepath, sheet_name="EA 2023"):
     """
-    Load a RISE score export (an HTML table saved as .xls).
+    Load one year of the RISE Electricity Access pillar data.
+    Drops the 'Scoring System' row beneath the header.
     """
-    return pd.read_html(filepath)[0]
+    df = pd.read_excel(filepath, sheet_name=sheet_name)
+    return df[df["Country"] != "Scoring System"].copy()
