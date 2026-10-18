@@ -201,3 +201,20 @@ def calculate_investment_opportunity_score(
     )
 
     return df
+
+
+def calculate_weighted_score(df, weights, output_column):
+    """
+    Weighted sum of score columns.
+
+    weights : dict of {column name: weight}; weights must sum to 1.
+    Only the listed columns are used.
+    """
+    if abs(sum(weights.values()) - 1) > 1e-9:
+        raise ValueError("Weights must sum to 1.")
+
+    df = df.copy()
+    df[output_column] = sum(
+        weight * df[column] for column, weight in weights.items()
+    )
+    return df
