@@ -218,3 +218,31 @@ def calculate_weighted_score(df, weights, output_column):
         weight * df[column] for column, weight in weights.items()
     )
     return df
+
+
+def calculate_opportunity_scores(df, weights, max_access=90):
+    """
+    Score countries within scope (2023 access <= max_access).
+
+    All component scores are rescaled within the in-scope group,
+    then combined with the given weights. Components with zero
+    weight are skipped, so a missing value can't turn the score into NaN.
+
+    Returns Country Code, Opportunity_Score and Opportunity_Rank
+    for the in-scope countries.
+    """
+    scope_df = df[df["2023"] <= max_access].copy()
+
+    scope_df = calculate_access_score(scope_df)
+    scope_df = calculate_population_score(scope_df)
+    scope_df = calculate_gdp_score(scope_df)
+    scope_df = calculate_improvement_score(scope_df)
+
+    active_weights = {column: w for column, w in weights.items() if w > 0}
+    scope_df = calculate_weighted_score(scope_df, active_weights, "Opportunity_Score")
+
+    scope_df["Opportunity_Rank"] = scope_df["Opportunity_Score"].rank(
+        ascending=False, method="min"
+    )
+
+    return scope_df[["Country Code", "Opportunity_Score", "Opportunity_Rank"]]
