@@ -16,26 +16,26 @@ DATA_PATH = Path(__file__).parent / "data" / "processed" / "ssa_market_readiness
 
 # Slider label and hover explanation for each score component
 WEIGHT_INFO = {
-    "Access_Score": (
+        "Access_Score": (
         "Access deficit",
-        "Countries with lower 2023 electricity access score higher.",
+        "Electricity access percentage deficit: countries with lower 2023 access score higher.",
     ),
     "Population_Score": (
         "People without electricity",
-        "Countries with more people lacking electricity score higher: the size of the unmet market.",
+        "Number of people without electricity: countries with more people lacking access score higher.",
     ),
     "GDP_Score": (
         "GDP per capita",
-        "Higher GDP per capita (log scale) scores higher, as a rough proxy for ability to pay.",
+        "Economic capacity: countries with higher GDP per capita (log scale) score higher.",
     ),
     "Improvement_Score": (
         "Access improvement (2014–2023)",
-        "Faster access gains score higher. Set to 0 in v4: fast progress can mean an active market or a shrinking one.",
+        "Change in electricity access from 2014 to 2023: faster gains score higher. Set to 0 by default, as fast progress can signal an active market or a shrinking one.",
     ),
 }
 
 # v4 baseline: equal importance for access, population, GDP; improvement excluded
-DEFAULTS = {"Access_Score": 5, "Population_Score": 5, "GDP_Score": 5, "Improvement_Score": 0, "max_access": 90}
+DEFAULTS = {"Access_Score": 33, "Population_Score": 33, "GDP_Score": 33, "Improvement_Score": 0, "max_access": 90}
 
 
 @st.cache_data
@@ -63,19 +63,18 @@ df = load_data()
 
 # ---------- Sidebar controls ----------
 st.sidebar.header("Model settings")
-st.sidebar.button("Reset to v4 baseline", on_click=reset_to_v4)
+st.sidebar.button("Reset to baseline", on_click=reset_to_v4)
 
 st.sidebar.subheader("Importance of each factor")
-st.sidebar.caption("Set how much each factor matters (0–10). They are converted to percentages that add up to 100%.")
-for key, (label, explanation) in WEIGHT_INFO.items():
-    st.sidebar.slider(label, 0, 10, key=key, help=explanation)
+st.sidebar.caption("Move the sliders to set how much each factor matters. The share under each slider is its actual weight in the score; the shares always add up to 100%.")
 
-st.sidebar.subheader("Scope")
-st.sidebar.slider(
-    "Exclude countries with 2023 access above (%)",
-    50, 100, key="max_access",
-    help="Countries above this access level are treated as near-universal access markets and left out of the ranking.",
-)
+raw_now = {key: st.session_state[key] for key in WEIGHT_INFO}
+total_now = sum(raw_now.values())
+
+for key, (label, explanation) in WEIGHT_INFO.items():
+    st.sidebar.slider(label, 0, 100, key=key, help=explanation)
+    share = raw_now[key] / total_now if total_now else 0
+    st.sidebar.caption(f"= {share:.0%} of the score")
 
 strict_tariff = st.sidebar.toggle(
     "Treat tariff caps as a hard gate",
@@ -216,4 +215,12 @@ st.download_button(
     data=settings_header + table.to_csv(index=False),
     file_name="minigrid_ranking.csv",
     mime="text/csv",
+)
+
+st.divider()
+st.caption(
+    "Data: World Bank, World Development Indicators (2023); World Bank/ESMAP, "
+    "Regulatory Indicators for Sustainable Energy (RISE), 2023. "
+    "A screening tool for further investigation, not investment advice. "
+    "Code and methodology: github.com/meezhay/energy-market-intelligence"
 )
