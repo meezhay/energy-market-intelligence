@@ -1,12 +1,12 @@
 # Mini-grid market screening: interactive sensitivity analysis
-# Run from the repo root with:  streamlit run app.py
+# Run from the repo root with:  python -m streamlit run app.py
 
 from pathlib import Path
 
+import altair as alt
 import numpy as np
 import pandas as pd
 import streamlit as st
-import altair as alt
 
 from src.scoring import calculate_opportunity_scores
 
@@ -14,22 +14,28 @@ st.set_page_config(page_title="Mini-grid market screening", layout="wide")
 
 DATA_PATH = Path(__file__).parent / "data" / "processed" / "ssa_market_readiness_v4.csv"
 
-
-# Slider labels for each score component
-WEIGHT_LABELS = {
-    "Access_Score": "Access deficit",
-    "Population_Score": "People without electricity",
-    "GDP_Score": "GDP per capita",
-    "Improvement_Score": "Access improvement (2014–2023)",
+# Slider label and hover explanation for each score component
+WEIGHT_INFO = {
+    "Access_Score": (
+        "Access deficit",
+        "Countries with lower 2023 electricity access score higher.",
+    ),
+    "Population_Score": (
+        "People without electricity",
+        "Countries with more people lacking electricity score higher: the size of the unmet market.",
+    ),
+    "GDP_Score": (
+        "GDP per capita",
+        "Higher GDP per capita (log scale) scores higher, as a rough proxy for ability to pay.",
+    ),
+    "Improvement_Score": (
+        "Access improvement (2014–2023)",
+        "Faster access gains score higher. Set to 0 in v4: fast progress can mean an active market or a shrinking one.",
+    ),
 }
 
-# Each version's weights (0–100, normalised later) and scope threshold
-# v1 and v2 had no scope rule, so they use 100% (all countries included)
-PRESETS = {
-    "v4 (current)": {"Access_Score": 33, "Population_Score": 33, "GDP_Score": 33, "Improvement_Score": 0, "max_access": 90},
-    "v2": {"Access_Score": 25, "Population_Score": 25, "GDP_Score": 25, "Improvement_Score": 25, "max_access": 100},
-    "v1": {"Access_Score": 33, "Population_Score": 33, "GDP_Score": 0, "Improvement_Score": 33, "max_access": 100},
-}
+# v4 baseline: equal importance for access, population, GDP; improvement excluded
+DEFAULTS = {"Access_Score": 5, "Population_Score": 5, "GDP_Score": 5, "Improvement_Score": 0, "max_access": 90}
 
 
 @st.cache_data
@@ -37,42 +43,52 @@ def load_data():
     return pd.read_csv(DATA_PATH)
 
 
-def apply_preset():
-    # Copy the chosen preset's values into the sliders
-    preset = PRESETS[st.session_state.preset]
-    for key, value in preset.items():
+def reset_to_v4():
+    # Put every control back to the v4 baseline
+    for key, value in DEFAULTS.items():
         st.session_state[key] = value
 
 
-# First run: start from the v4 preset
-if "preset" not in st.session_state:
-    st.session_state.preset = "v4 (current)"
-    apply_preset()
+def normalise(raw):
+    # Turn importance values (0–10) into weights that sum to 1
+    total = sum(raw.values())
+    return {key: value / total for key, value in raw.items()}
+
+
+# First run: start from the v4 baseline
+if "max_access" not in st.session_state:
+    reset_to_v4()
 
 df = load_data()
 
 # ---------- Sidebar controls ----------
 st.sidebar.header("Model settings")
-st.sidebar.radio("Start from a version", list(PRESETS), key="preset", on_change=apply_preset)
-st.sidebar.caption("v3 tested extra indicators and rejected them, so it has no preset.")
+st.sidebar.button("Reset to v4 baseline", on_click=reset_to_v4)
 
-st.sidebar.subheader("Weights")
-for key, label in WEIGHT_LABELS.items():
-    st.sidebar.slider(label, 0, 100, key=key)
+st.sidebar.subheader("Importance of each factor")
+st.sidebar.caption("Set how much each factor matters (0–10). They are converted to percentages that add up to 100%.")
+for key, (label, explanation) in WEIGHT_INFO.items():
+    st.sidebar.slider(label, 0, 10, key=key, help=explanation)
 
 st.sidebar.subheader("Scope")
-st.sidebar.slider("Exclude countries with 2023 access above (%)", 50, 100, key="max_access")
+st.sidebar.slider(
+    "Exclude countries with 2023 access above (%)",
+    50, 100, key="max_access",
+    help="Countries above this access level are treated as near-universal access markets and left out of the ranking.",
+)
 
-strict_tariff = st.sidebar.toggle("Treat tariff caps as a hard gate (ignore subsidy route)")
+strict_tariff = st.sidebar.toggle(
+    "Treat tariff caps as a hard gate",
+    help="When on, countries that cap tariffs but fund the revenue gap through subsidy are counted as failing a gate.",
+)
 
 # ---------- Calculate ----------
-raw_weights = {key: st.session_state[key] for key in WEIGHT_LABELS}
-total = sum(raw_weights.values())
-if total == 0:
-    st.warning("Set at least one weight above zero.")
+raw_weights = {key: st.session_state[key] for key in WEIGHT_INFO}
+if sum(raw_weights.values()) == 0:
+    st.warning("Set at least one factor above zero.")
     st.stop()
 
-weights = {key: value / total for key, value in raw_weights.items()}
+weights = normalise(raw_weights)
 
 scores = calculate_opportunity_scores(df, weights, max_access=st.session_state.max_access)
 
@@ -90,11 +106,9 @@ result["Score_Status"] = np.select(
 if strict_tariff:
     result["Feasibility"] = result["Feasibility"].replace("Feasible with subsidy support", "Fails a gate")
 
-
 # v4 baseline ranking, used to show how far each country moves
-v4 = PRESETS["v4 (current)"]
-v4_weights = {k: v4[k] / sum(v4[k] for k in WEIGHT_LABELS) for k in WEIGHT_LABELS}
-baseline = calculate_opportunity_scores(df, v4_weights, max_access=v4["max_access"])
+baseline_weights = normalise({key: DEFAULTS[key] for key in WEIGHT_INFO})
+baseline = calculate_opportunity_scores(df, baseline_weights, max_access=DEFAULTS["max_access"])
 
 result = result.merge(
     baseline[["Country Code", "Opportunity_Rank"]].rename(columns={"Opportunity_Rank": "Baseline_Rank"}),
@@ -105,7 +119,6 @@ result = result.merge(
 # Positive = moved up compared with v4; blank if not ranked in one of the two
 result["Rank_Change"] = result["Baseline_Rank"] - result["Opportunity_Rank"]
 
-
 # ---------- Display ----------
 st.title("Where should mini-grids go next?")
 st.caption(
@@ -113,7 +126,10 @@ st.caption(
     "change them to see how the ranking responds."
 )
 
-st.write("**Weights in use:** " + ", ".join(f"{WEIGHT_LABELS[k]} {v:.0%}" for k, v in weights.items() if v > 0))
+weights_text = ", ".join(
+    f"{WEIGHT_INFO[k][0]} {v:.0%}" for k, v in weights.items() if v > 0
+)
+st.write(f"**Weights in use:** {weights_text}")
 
 # Feasibility colours, matching the Power BI dashboard
 feasibility_colors = alt.Scale(
@@ -125,7 +141,10 @@ left, right = st.columns(2)
 
 # Top 10 by opportunity score
 with left:
-    st.subheader("Top 10 opportunity markets")
+    st.subheader(
+        "Top 10 opportunity markets",
+        help="The ten highest opportunity scores under the weights you have set.",
+    )
     top10 = result.nsmallest(10, "Opportunity_Rank")
     bars = alt.Chart(top10).mark_bar(color="#0F8B7E").encode(
         x=alt.X("Opportunity_Score:Q", title="Opportunity score"),
@@ -136,13 +155,24 @@ with left:
 
 # Opportunity vs readiness, only countries with both values
 with right:
-    st.subheader("Opportunity vs regulatory readiness")
+    st.subheader(
+        "Opportunity vs regulatory readiness",
+        help=(
+            "Each dot is a country. Further right means a larger market opportunity; higher up means "
+            "stronger mini-grid regulation (RISE 2023). Top-right countries combine both. "
+            "Colour shows whether the regulatory gates are met."
+        ),
+    )
     both = result.dropna(subset=["Opportunity_Score", "RISE_Minigrid_Score"])
 
     points = alt.Chart(both).mark_circle(size=90).encode(
         x=alt.X("Opportunity_Score:Q", title="Opportunity score"),
         y=alt.Y("RISE_Minigrid_Score:Q", title="RISE mini-grid score (0–100)"),
-        color=alt.Color("Feasibility:N", scale=feasibility_colors, legend=alt.Legend(orient="bottom", columns=3, labelLimit=0, title=None)),
+        color=alt.Color(
+            "Feasibility:N",
+            scale=feasibility_colors,
+            legend=alt.Legend(orient="bottom", columns=3, labelLimit=0, title=None),
+        ),
         tooltip=["Country Name", alt.Tooltip("Opportunity_Score:Q", format=".2f"),
                  alt.Tooltip("RISE_Minigrid_Score:Q", format=".0f"), "Feasibility", "Failed_Gates"],
     )
@@ -173,4 +203,17 @@ st.dataframe(
         "2023": st.column_config.NumberColumn("Access 2023 (%)", format="%.1f"),
         "Score_Status": "Score status",
     },
+)
+
+# Download: the ranking plus the settings that produced it, so results stay reproducible
+settings_header = (
+    f"# Weights: {weights_text}\n"
+    f"# Scope: countries with 2023 access above {st.session_state.max_access}% excluded\n"
+    f"# Tariff caps treated as a hard gate: {'yes' if strict_tariff else 'no'}\n"
+)
+st.download_button(
+    "Download this ranking (CSV)",
+    data=settings_header + table.to_csv(index=False),
+    file_name="minigrid_ranking.csv",
+    mime="text/csv",
 )
