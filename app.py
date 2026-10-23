@@ -34,9 +34,13 @@ WEIGHT_INFO = {
     ),
 }
 
-# v4 baseline: equal importance for access, population, GDP; improvement excluded
-DEFAULTS = {"Access_Score": 33, "Population_Score": 33, "GDP_Score": 33, "Improvement_Score": 0, "max_access": 90}
 
+# Importance levels shown on the sliders, and the value each one counts as
+IMPORTANCE = {"Not used": 0, "Low": 1, "Medium": 2, "High": 3, "Very high": 4}
+
+# Baseline: equal importance for access, population, GDP; improvement not used
+DEFAULTS = {"Access_Score": "Medium", "Population_Score": "Medium", "GDP_Score": "Medium",
+            "Improvement_Score": "Not used", "max_access": 90}
 
 @st.cache_data
 def load_data():
@@ -65,16 +69,11 @@ df = load_data()
 st.sidebar.header("Model settings")
 st.sidebar.button("Reset to baseline", on_click=reset_to_v4)
 
-st.sidebar.subheader("Importance of each factor")
-st.sidebar.caption("Move the sliders to set how much each factor matters. The share under each slider is its actual weight in the score; the shares always add up to 100%.")
-
-raw_now = {key: st.session_state[key] for key in WEIGHT_INFO}
-total_now = sum(raw_now.values())
+st.sidebar.subheader("How much should each factor count?")
+st.sidebar.caption("The resulting formula is shown above the charts.")
 
 for key, (label, explanation) in WEIGHT_INFO.items():
-    st.sidebar.slider(label, 0, 100, key=key, help=explanation)
-    share = raw_now[key] / total_now if total_now else 0
-    st.sidebar.caption(f"= {share:.0%} of the score")
+    st.sidebar.select_slider(label, options=list(IMPORTANCE), key=key, help=explanation)
 
 strict_tariff = st.sidebar.toggle(
     "Treat tariff caps as a hard gate",
@@ -82,7 +81,7 @@ strict_tariff = st.sidebar.toggle(
 )
 
 # ---------- Calculate ----------
-raw_weights = {key: st.session_state[key] for key in WEIGHT_INFO}
+raw_weights = {key: IMPORTANCE[st.session_state[key]] for key in WEIGHT_INFO}
 if sum(raw_weights.values()) == 0:
     st.warning("Set at least one factor above zero.")
     st.stop()
@@ -106,7 +105,7 @@ if strict_tariff:
     result["Feasibility"] = result["Feasibility"].replace("Feasible with subsidy support", "Fails a gate")
 
 # v4 baseline ranking, used to show how far each country moves
-baseline_weights = normalise({key: DEFAULTS[key] for key in WEIGHT_INFO})
+baseline_weights = normalise({key: IMPORTANCE[DEFAULTS[key]] for key in WEIGHT_INFO})
 baseline = calculate_opportunity_scores(df, baseline_weights, max_access=DEFAULTS["max_access"])
 
 result = result.merge(
@@ -125,10 +124,14 @@ st.caption(
     "change them to see how the ranking responds."
 )
 
-weights_text = ", ".join(
-    f"{WEIGHT_INFO[k][0]} {v:.0%}" for k, v in weights.items() if v > 0
+weights_text = ", ".join(f"{WEIGHT_INFO[k][0]} {v:.0%}" for k, v in weights.items() if v > 0)
+
+formula = " + ".join(f"({v:.0%} × {WEIGHT_INFO[k][0]})" for k, v in weights.items() if v > 0)
+st.markdown(f"**Opportunity score** = {formula}")
+st.caption(
+    "Each factor is first rescaled from 0 (lowest country) to 1 (highest), so they can be combined. "
+    "A higher score means a larger, more pressing market."
 )
-st.write(f"**Weights in use:** {weights_text}")
 
 # Feasibility colours, matching the Power BI dashboard
 feasibility_colors = alt.Scale(
@@ -195,7 +198,11 @@ st.dataframe(
     column_config={
         "Country Name": "Country",
         "Opportunity_Rank": st.column_config.NumberColumn("Rank", format="%d"),
-        "Rank_Change": st.column_config.NumberColumn("Change vs v4", format="%+d"),
+                "Rank_Change": st.column_config.NumberColumn(
+            "Change vs baseline",
+            format="%+d",
+            help="Places moved compared with the baseline (Medium importance for access, people and GDP; 90% scope). +2 = moved up two places.",
+        ),
         "Opportunity_Score": st.column_config.NumberColumn("Opportunity score", format="%.2f"),
         "Failed_Gates": "Failed gates",
         "RISE_Minigrid_Score": st.column_config.NumberColumn("RISE score", format="%.0f"),
